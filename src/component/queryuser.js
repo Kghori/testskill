@@ -1,52 +1,36 @@
-
-
 import React, { useState, useEffect } from "react";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { dbApp1, dbApp2 } from "../firebase/firebaseConfig"; // Correct Firestore import
-import SkillSelector from "./skillselector"; // Assuming this selects skills by id
+import { collection, query, getDocs, doc, getDoc } from "firebase/firestore";
+import { dbApp1, dbApp2 } from "../firebase/firebaseConfig";
+import SkillSelector from "./skillselector";
 
 const QueryUsers = () => {
   const [formData, setFormData] = useState({
-    skills: [], // Initialize empty array for selected skills' ids
+    skills: [],
   });
-  const [users, setUsers] = useState([]);    // To store matching users
-  const [error, setError] = useState("");    // To store error messages
-  const [loading, setLoading] = useState(false);  // For loading state
-  const [skillNames, setSkillNames] = useState({}); // Store skill names by ID
+  const [users, setUsers] = useState([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [skillNames, setSkillNames] = useState({});
 
-  // Fetch skill names by IDs when selected skills change
-  useEffect(() => {
-    const fetchSkillNames = async () => {
-      const names = {};
-      for (const skillId of formData.skills) {
-        const skillName = await getSkillNameById(skillId);
-        names[skillId] = skillName;
-      }
-      setSkillNames(names);
-    };
-
-    if (formData.skills?.length > 0) {
-      fetchSkillNames();
-    }
-  }, [formData.skills]);
-
-  // Fetch skill name by ID from Firestore
-  const getSkillNameById = async (id) => {
+  // Fetch skill names for all skills in Firestore when users are queried
+  const fetchAllSkillNames = async () => {
     try {
-      const skillDocRef = doc(dbApp2, "skills", id);
-      const skillDoc = await getDoc(skillDocRef);
-      if (skillDoc.exists()) {
-        return skillDoc.data()?.name || skillDoc.data()?.name;
-      } else {
-        return "Unnamed";
-      }
+      const skillsCollection = collection(dbApp2, "skills");
+      const querySnapshot = await getDocs(skillsCollection);
+      const names = {};
+      querySnapshot.forEach((doc) => {
+        names[doc.id] = doc.data().name || "Unnamed";
+      });
+      setSkillNames(names);
     } catch (error) {
-      console.error("Error fetching skill name by id:", error);
-      return "Unnamed";
+      console.error("Error fetching all skill names:", error);
     }
   };
 
-  // Query users based on selected skills
+  useEffect(() => {
+    fetchAllSkillNames();
+  }, []);
+
   const queryUsers = async (e) => {
     e.preventDefault();
 
@@ -61,50 +45,38 @@ const QueryUsers = () => {
 
     try {
       const usersCollection = collection(dbApp1, "users");
+      const skillSet = new Set(formData.skills); // Create a set for fast lookup
 
-      const userResults = new Set(); // To store unique users
-      const skillCounts = new Map(); // To track the number of matched skills for each user
+      // Fetch users with at least one matching skill
+      const skillQuery = query(usersCollection);
+      const querySnapshot = await getDocs(skillQuery);
 
-      // Query users for each selected skill and track matches
-      for (const skillId of formData.skills) {
-        const skillQuery = query(usersCollection, where("skills", "array-contains", skillId));
-        const querySnapshot = await getDocs(skillQuery);
+      const matchedUsers = [];
+      querySnapshot.forEach((doc) => {
+        const userData = doc.data();
+        const userSkills = new Set(userData.skills); // Convert user's skills to a set
 
-        querySnapshot.forEach((doc) => {
-          const userData = doc.data();
-          const userId = doc.id;
-
-          // Track how many skills this user has matched
-          if (!skillCounts.has(userId)) {
-            skillCounts.set(userId, 0);
-          }
-          skillCounts.set(userId, skillCounts.get(userId) + 1);
-
-          userResults.add({
-            id: userId,
+        // Check if the user's skills include all the selected skills
+        const hasAllSkills = [...skillSet].every((skill) => userSkills.has(skill));
+        if (hasAllSkills) {
+          matchedUsers.push({
+            id: doc.id,
             name: userData.name,
             skills: userData.skills,
           });
-        });
-      }
-
-      // Filter users who match the required number of skills
-      const filteredUsers = [...userResults].filter((user) => {
-        // Only return users who match at least the number of selected skills
-        return skillCounts.get(user.id) === formData.skills.length;
+        }
       });
 
-      // If no matching users are found
-      if (filteredUsers.length === 0) {
+      if (matchedUsers.length === 0) {
         setError("No users found with the provided skills.");
       } else {
-        setUsers(filteredUsers);
+        setUsers(matchedUsers);
       }
     } catch (error) {
       setError("Error querying users. Please try again later.");
       console.error("Error querying users:", error);
     } finally {
-      setLoading(false);  // Stop loading after query completes
+      setLoading(false);
     }
   };
 
@@ -115,9 +87,9 @@ const QueryUsers = () => {
         <div className="mb-6">
           <SkillSelector
             label="Skills"
-            selectedSkills={formData.skills} // Pass selected skills (ids) to SkillSelector
+            selectedSkills={formData.skills}
             onSkillSelect={(skills) =>
-              setFormData((prev) => ({ ...prev, skills })) // Update selected skills in formData
+              setFormData((prev) => ({ ...prev, skills }))
             }
           />
         </div>
@@ -144,10 +116,8 @@ const QueryUsers = () => {
               <p className="text-gray-500 mt-2">
                 Skills:{" "}
                 {user.skills
-  .map((skillId) => skillNames[skillId] || "Unnamed") // Map skillId to skillName, fallback to "Unnamed"
-  .filter((skill) => skill !== "") // Remove empty or undefined skills
-  .join(", ")} 
-
+                  .map((skillId) => skillNames[skillId] || "Unnamed")
+                  .join(", ")}
               </p>
             </div>
           ))}
