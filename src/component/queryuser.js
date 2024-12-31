@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, query, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, getDocs, doc, getDoc, where } from "firebase/firestore";
 import { dbApp1, dbApp2 } from "../firebase/firebaseConfig";
 import SkillSelector from "./skillselector";
 
@@ -45,10 +45,12 @@ const QueryUsers = () => {
 
     try {
       const usersCollection = collection(dbApp1, "users");
-      const skillSet = new Set(formData.skills); // Create a set for fast lookup
 
       // Fetch users with at least one matching skill
-      const skillQuery = query(usersCollection);
+      const skillQuery = query(
+        usersCollection,
+        where("skills", "array-contains-any", formData.skills) // Matches at least one skill
+      );
       const querySnapshot = await getDocs(skillQuery);
 
       const matchedUsers = [];
@@ -57,7 +59,7 @@ const QueryUsers = () => {
         const userSkills = new Set(userData.skills); // Convert user's skills to a set
 
         // Check if the user's skills include all the selected skills
-        const hasAllSkills = [...skillSet].every((skill) => userSkills.has(skill));
+        const hasAllSkills = formData.skills.every((skill) => userSkills.has(skill));
         if (hasAllSkills) {
           matchedUsers.push({
             id: doc.id,
